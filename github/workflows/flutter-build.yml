@@ -1,0 +1,42 @@
+name: Flutter APK Builder
+
+on:
+  workflow_dispatch:
+    inputs:
+      repo_url:
+        required: true
+      branch:
+        required: false
+        default: main
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Clone Project
+        run: |
+          git clone ${{ github.event.inputs.repo_url }} project
+          cd project
+          git checkout ${{ github.event.inputs.branch }}
+
+      - name: Setup Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          flutter-version: '3.22.2'
+
+      - name: Install Dependencies
+        run: |
+          cd project
+          flutter pub get
+
+      - name: Build APK
+        run: |
+          cd project
+          flutter build apk --release
+
+      - name: Upload APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: release-apk
+          path: project/build/app/outputs/flutter-apk/app-release.apk
