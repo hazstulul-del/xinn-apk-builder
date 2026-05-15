@@ -1,0 +1,77 @@
+name: Flutter APK Builder
+
+on:
+  repository_dispatch:
+    types: [build_flutter]
+
+permissions:
+  contents: read
+  actions: read
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+
+    steps:
+      - name: Install tools
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y unzip wget
+
+      - name: Setup Java
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+
+      - name: Setup Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+
+      - name: Download ZIP from Telegram
+        run: |
+          mkdir -p source
+          wget -O project.zip "${{ github.event.client_payload.zip_url }}"
+          unzip -q project.zip -d source
+
+      - name: Find Flutter project
+        id: find_project
+        run: |
+          PROJECT_DIR=$(find source -name pubspec.yaml -exec dirname {} \; | head -n 1)
+          if [ -z "$PROJECT_DIR" ]; then
+            echo "pubspec.yaml not found"
+            exit 1
+          fi
+          echo "project_dir=$PROJECT_DIR" >> $GITHUB_OUTPUT
+
+      - name: Flutter pub get
+        working-directory: ${{ steps.find_project.outputs.project_dir }}
+        run: flutter pub get
+
+      - name: Build APK
+        working-directory: ${{ steps.find_project.outputs.project_dir }}
+        run: |
+          if [ "${{ github.event.client_payload.build_type }}" = "debug" ]; then
+            flutter build apk --debug
+          else
+            flutter build apk --release
+          fi
+
+      - name: Prepare APK
+        run: |
+          mkdir -p out
+          APK_FILE=$(find "${{ steps.find_project.outputs.project_dir }}/build/app/outputs/flutter-apk" -name "*.apk" | head -n 1)
+          if [ -z "$APK_FILE" ]; then
+            echo "APK not found"
+            exit 1
+          fi
+          cp "$APK_FILE" "out/xinn-${{ github.event.client_payload.build_type }}.apk"
+
+      - name: Upload APK artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: apk-${{ github.event.client_payload.build_id }}
+          path: out/*.apk
+          retention-days: 1
